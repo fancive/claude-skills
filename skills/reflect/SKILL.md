@@ -179,6 +179,20 @@ Claude: [完成代码修改]
 
 ## 交互式确认
 
+**重要：先问后写，不要先展示 diff**
+
+错误示范（看起来像已写入）：
+```diff
++ ### some-rule
++ - scope: ...
+```
+然后问确认 ← 用户会以为已经写入了
+
+正确流程：
+1. 展示检测到的信号（纯文本描述）
+2. 调用 AskUserQuestion 确认
+3. **用户确认后**才展示写入结果
+
 使用 `AskUserQuestion` 逐条确认：
 
 ```yaml
@@ -192,6 +206,10 @@ options:
   - label: "跳过"
     description: "不保存，从暂存区移除"
 ```
+
+**确认后的输出**：
+- 选择存入 → `✓ 已写入 {path}`，然后展示 diff
+- 选择跳过 → `⊘ 已跳过`，不展示 diff
 
 ---
 
@@ -226,8 +244,9 @@ User: /reflect
 
 Claude:
 检测到 1 条待审查规则:
+  - use-dayjs-not-moment: 用 dayjs 替代 moment（体积更小）
 
-→ 调用 AskUserQuestion:
+→ 调用 AskUserQuestion（不展示 diff，只展示描述）:
   规则: use-dayjs-not-moment
   Use dayjs instead of moment for date handling (smaller bundle size)
 
@@ -237,7 +256,16 @@ Claude:
   ○ 存入全局
   ○ 跳过
 
-用户选择 "存入项目" → ✓ 已写入 ./.claude/learned-rules.md
+用户选择 "存入项目"
+
+Claude:
+✓ 已写入 ./.claude/learned-rules.md
+```diff
++ ### use-dayjs-not-moment
++ - scope: frontend
++ - confidence: medium
++ - constraint: Use dayjs instead of moment for date handling
+```
 ```
 
 ### Example 2: 批量审查
