@@ -1,7 +1,7 @@
 ---
 name: reflect
 description: "Analyze conversation to extract reusable engineering rules. Use when user says 'reflect', 'remember this', 'learn from this', or after receiving corrections/feedback."
-allowed-tools: Read, Write, Edit, Glob, Grep
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion
 argument-hint: "[--dry-run] [--scope frontend|backend|api|security] [--global|--project]"
 ---
 
@@ -119,10 +119,25 @@ argument-hint: "[--dry-run] [--scope frontend|backend|api|security] [--global|--
    - `--dry-run`: Show only, no changes
    - `--global`: Force all to ~/.claude/learned-rules.md
    - `--project`: Force all to ./.claude/learned-rules.md
-   - High confidence: **Always ask for approval + storage location**
-   - Medium/Low: Auto-apply to suggested location, notify user
+   - Otherwise: **使用 AskUserQuestion 逐条确认每条规则**
 
-9. **Log changes** to corresponding reflect-log.md
+9. **逐条确认规则** (使用 AskUserQuestion 工具):
+   对于每条提取的规则，调用 AskUserQuestion：
+   ```yaml
+   question: "规则: {rule-id}\n{constraint}\n\n如何处理这条规则？"
+   header: "{rule-id}"
+   options:
+     - label: "存入项目"
+       description: "写入 ./.claude/learned-rules.md（推荐）"
+     - label: "存入全局"
+       description: "写入 ~/.claude/learned-rules.md"
+     - label: "跳过"
+       description: "不保存这条规则"
+   ```
+
+   根据用户选择执行相应操作。
+
+10. **Log changes** to corresponding reflect-log.md
 
 ## Rule Format
 
@@ -190,15 +205,43 @@ argument-hint: "[--dry-run] [--scope frontend|backend|api|security] [--global|--
 ```
 
 ---
-⚠️ 检测到 1 条 high confidence 规则，需要确认。
+检测到 2 条规则，正在逐条确认...
 
-security-sql-parameterized:
-  [G] 确认存入全局 (推荐)
-  [P] 改存项目
-  [E] 编辑规则
-  [S] 跳过
+（然后使用 AskUserQuestion 工具逐条让用户确认）
+```
 
-选择: _
+### 交互式确认流程
+
+使用 `AskUserQuestion` 工具，每条规则单独确认：
+
+**规则 1/2: security-sql-parameterized**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 规则: security-sql-parameterized                            │
+│ Always use parameterized queries. Never concatenate input.  │
+│                                                             │
+│ 如何处理这条规则？                                           │
+├─────────────────────────────────────────────────────────────┤
+│ ○ 存入全局 (推荐)  - 写入 ~/.claude/learned-rules.md        │
+│ ○ 存入项目         - 写入 ./.claude/learned-rules.md        │
+│ ○ 跳过             - 不保存这条规则                          │
+│ ○ Other            - 自定义输入                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**规则 2/2: frontend-use-antd**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 规则: frontend-use-antd                                     │
+│ Use Ant Design components. Don't introduce other UI libs.   │
+│                                                             │
+│ 如何处理这条规则？                                           │
+├─────────────────────────────────────────────────────────────┤
+│ ○ 存入项目 (推荐)  - 写入 ./.claude/learned-rules.md        │
+│ ○ 存入全局         - 写入 ~/.claude/learned-rules.md        │
+│ ○ 跳过             - 不保存这条规则                          │
+│ ○ Other            - 自定义输入                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Safety Rules
@@ -221,23 +264,38 @@ User: "这个 SQL 有注入风险，必须参数化"
 建议:
   - id: security-sql-parameterized
   - confidence: high (关键词: 必须)
+  - 建议存储: 全局
 
-⚠️ High confidence 规则需要确认。应用？ [y/n]
+→ 调用 AskUserQuestion:
+  question: "规则: security-sql-parameterized\nAlways use parameterized queries.\n\n如何处理？"
+  options:
+    - "存入全局 (推荐)"
+    - "存入项目"
+    - "跳过"
+
+用户选择 "存入全局" → 写入 ~/.claude/learned-rules.md
 ```
 
-### Example 2: 代码风格
+### Example 2: 多条规则逐个确认
 ```
-User: "组件命名用 PascalCase 比较好"
+User: "组件用 PascalCase，API 响应要统一格式"
 
 /reflect
 
 输出:
-检测到: [APPROVAL] 组件命名偏好
-建议:
-  - id: frontend-component-naming
-  - confidence: medium (关键词: 比较好)
+检测到 2 条信号:
+1. [PREFERENCE] 组件命名
+2. [PREFERENCE] API 响应格式
 
-✓ Medium confidence 规则已自动应用
+→ 调用 AskUserQuestion (规则 1/2):
+  question: "规则: frontend-component-naming\nUse PascalCase for components.\n\n如何处理？"
+  用户选择: "存入项目"
+
+→ 调用 AskUserQuestion (规则 2/2):
+  question: "规则: api-response-format\nUse consistent response format.\n\n如何处理？"
+  用户选择: "存入项目"
+
+✓ 2 条规则已写入 ./.claude/learned-rules.md
 ```
 
 ### Example 3: Dry Run
