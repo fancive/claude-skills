@@ -78,6 +78,30 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 
 详见 [agents/code-reviewer/agent.md](agents/code-reviewer/agent.md)
 
+### codebase-investigator
+
+只读代码库分析：搜索文件、追踪依赖、理解架构、生成文档。
+
+**触发方式**：
+- 关键词触发：`investigate`, `analyze`, `trace`, `how does`, `where is`, `find code`
+- 直接调用：`Task(subagent_type: "codebase-investigator")`
+
+**输出**：在 `notes/` 目录生成结构化的分析报告（Markdown）。
+
+详见 [agents/codebase-investigator/agent.md](agents/codebase-investigator/agent.md)
+
+### paper-summarizer
+
+总结学术论文/PDF，或为代码库生成 draw.io 架构图。
+
+**触发方式**：
+- 关键词触发：`paper`, `PDF`, `arXiv`, `research`, `architecture diagram`, `draw.io`
+- 直接调用：`Task(subagent_type: "paper-summarizer")`
+
+**输出**：中文论文摘要 或 `.drawio` 架构图文件。
+
+详见 [agents/paper-summarizer/agent.md](agents/paper-summarizer/agent.md)
+
 ## Plugins
 
 *Coming soon*
@@ -90,7 +114,11 @@ claude-skills/
 │   └── reflect/
 │       └── SKILL.md
 ├── agents/
-│   └── code-reviewer/
+│   ├── code-reviewer/
+│   │   └── agent.md
+│   ├── codebase-investigator/
+│   │   └── agent.md
+│   └── paper-summarizer/
 │       └── agent.md
 ├── plugins/
 │   └── (future)
