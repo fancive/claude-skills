@@ -43,6 +43,34 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 # 安装 plugin（按 plugin 说明操作）
 ```
 
+## Commands
+
+Commands 是用户入口，调用对应的 agents。
+
+| 命令 | Agent | 用途 |
+|------|-------|------|
+| `/plan` | planner | 实现规划 |
+| `/architect` | architect | 系统设计、ADR |
+| `/tdd` | tdd-guide | 测试驱动开发 |
+| `/cr` | code-reviewer | Codex 代码审查 |
+| `/investigate` | codebase-investigator | 代码库分析 |
+| `/refactor-clean` | refactor-cleaner | 死代码清理 (Python/Go/JS/TS) |
+| `/update-codemaps` | codemap-updater | 生成架构文档 |
+| `/e2e` | e2e-browser | 通过 Claude in Chrome 进行浏览器 E2E 测试 |
+
+### 安装
+
+```bash
+ln -sf $(pwd)/commands/plan.md ~/.claude/commands/plan.md
+ln -sf $(pwd)/commands/architect.md ~/.claude/commands/architect.md
+ln -sf $(pwd)/commands/tdd.md ~/.claude/commands/tdd.md
+ln -sf $(pwd)/commands/cr.md ~/.claude/commands/cr.md
+ln -sf $(pwd)/commands/investigate.md ~/.claude/commands/investigate.md
+ln -sf $(pwd)/commands/refactor-clean.md ~/.claude/commands/refactor-clean.md
+ln -sf $(pwd)/commands/update-codemaps.md ~/.claude/commands/update-codemaps.md
+ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
+```
+
 ## Skills
 
 ### reflect
@@ -90,17 +118,106 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 
 详见 [agents/codebase-investigator/agent.md](agents/codebase-investigator/agent.md)
 
-### paper-summarizer
+### planner
 
-总结学术论文/PDF，或为代码库生成 draw.io 架构图。
+复杂功能和重构的实现规划专家。
 
 **触发方式**：
-- 关键词触发：`paper`, `PDF`, `arXiv`, `research`, `architecture diagram`, `draw.io`
-- 直接调用：`Task(subagent_type: "paper-summarizer")`
+- 关键词触发：`plan`, `implementation`, `feature planning`, `refactor planning`
+- 直接调用：`Task(subagent_type: "planner")`
 
-**输出**：中文论文摘要 或 `.drawio` 架构图文件。
+**输出**：结构化实现计划，包含阶段、步骤、风险和成功标准。
 
-详见 [agents/paper-summarizer/agent.md](agents/paper-summarizer/agent.md)
+详见 [agents/planner/agent.md](agents/planner/agent.md)
+
+### architect
+
+系统设计和技术决策的软件架构专家。
+
+**触发方式**：
+- 关键词触发：`architecture`, `system design`, `scalability`, `technical decision`
+- 直接调用：`Task(subagent_type: "architect")`
+
+**输出**：架构决策记录（ADR）、设计提案、权衡分析。
+
+详见 [agents/architect/agent.md](agents/architect/agent.md)
+
+### tdd-guide
+
+强制测试先行的 TDD 专家。
+
+**触发方式**：
+- 关键词触发：`TDD`, `test first`, `write tests`, `test coverage`
+- 直接调用：`Task(subagent_type: "tdd-guide")`
+
+**能力**：可以编写代码（有 Write, Edit, Bash 工具）。强制 Red-Green-Refactor 循环，确保 80%+ 覆盖率。
+
+详见 [agents/tdd-guide/agent.md](agents/tdd-guide/agent.md)
+
+### refactor-cleaner
+
+多语言死代码检测和清理。
+
+**支持语言**：
+- Python: vulture, dead, autoflake
+- Go: deadcode, staticcheck, go mod tidy
+- JS/TS: knip, depcheck, ts-prune
+
+**触发方式**：
+- 关键词触发：`refactor`, `clean`, `dead code`, `unused`
+- 直接调用：`Task(subagent_type: "refactor-cleaner")`
+
+**安全性**：每次删除前后运行测试，失败自动回滚。
+
+详见 [agents/refactor-cleaner/agent.md](agents/refactor-cleaner/agent.md)
+
+### codemap-updater
+
+从代码库分析生成高效的架构文档。
+
+**输出**：
+```
+codemaps/
+├── architecture.md   # 整体结构
+├── backend.md        # API 路由、服务
+├── frontend.md       # 页面、组件
+└── data.md           # 数据模型
+```
+
+**触发方式**：
+- 关键词触发：`codemap`, `architecture`, `documentation`
+- 直接调用：`Task(subagent_type: "codemap-updater")`
+
+**特性**：多语言支持 (Go, Python, JS/TS, Rust)，差异检测，时间戳。
+
+详见 [agents/codemap-updater/agent.md](agents/codemap-updater/agent.md)
+
+### e2e-browser
+
+使用 Claude in Chrome 进行真实浏览器 E2E 测试。
+
+**前置条件**：
+- 安装并连接 Claude in Chrome MCP 扩展
+
+**触发方式**：
+- 关键词触发：`e2e`, `test`, `browser`, `chrome`, `visual`
+- 直接调用：`Task(subagent_type: "e2e-browser")`
+
+**能力**：
+- 导航到 URL、点击元素、填写表单
+- 每步截图
+- 录制测试流程为 GIF
+- 验证页面内容和元素状态
+- 生成测试报告
+
+**用法**：
+```bash
+/e2e test login flow on https://example.com
+/e2e verify search works on current page
+/e2e record checkout flow with GIF
+```
+
+详见 [agents/e2e-browser/agent.md](agents/e2e-browser/agent.md)
 
 ## Plugins
 
@@ -110,15 +227,34 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 
 ```
 claude-skills/
+├── commands/
+│   ├── plan.md
+│   ├── architect.md
+│   ├── tdd.md
+│   ├── cr.md
+│   ├── investigate.md
+│   ├── refactor-clean.md
+│   ├── update-codemaps.md
+│   └── e2e.md
 ├── skills/
 │   └── reflect/
 │       └── SKILL.md
 ├── agents/
+│   ├── architect/
+│   │   └── agent.md
 │   ├── code-reviewer/
 │   │   └── agent.md
 │   ├── codebase-investigator/
 │   │   └── agent.md
-│   └── paper-summarizer/
+│   ├── planner/
+│   │   └── agent.md
+│   ├── tdd-guide/
+│   │   └── agent.md
+│   ├── refactor-cleaner/
+│   │   └── agent.md
+│   ├── codemap-updater/
+│   │   └── agent.md
+│   └── e2e-browser/
 │       └── agent.md
 ├── plugins/
 │   └── (future)
