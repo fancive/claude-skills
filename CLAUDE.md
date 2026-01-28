@@ -58,9 +58,12 @@ ln -sf $(pwd)/agents/{name}/agent.md ~/.claude/agents/{name}.md
 - `/refactor-clean` - Dead code cleanup (Python/Go/JS/TS), invokes refactor-cleaner agent
 - `/update-codemaps` - Generate architecture documentation, invokes codemap-updater agent
 - `/e2e` - Browser E2E testing via Claude in Chrome, invokes e2e-browser agent
+- `/eval` - Eval-Driven Development: define, check, report evals
+- `/learn` - Review pending skills extracted by continuous-learning
 
 ### Skills
-- `reflect` - Extract engineering rules from conversation corrections/preferences. Two-phase workflow: auto-capture to pending → user review to commit.
+- `eval-harness` - EDD framework: capability/regression evals, pass@k metrics, code/model/human graders.
+- `continuous-learning` - Auto-extract patterns and preferences from sessions. Two-phase: Stop hook captures → `/learn` reviews. Supports project/global storage.
 
 ### Agents
 - `code-reviewer` - Send diffs to OpenAI Codex, returns P1/P2/P3 feedback
