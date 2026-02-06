@@ -1,65 +1,80 @@
 ---
 name: continuous-learning
-description: "Auto-extract reusable patterns and preferences from Claude Code sessions. Two-phase: auto-capture to pending, /learn to review. Use when: (1) session ends via Stop hook, (2) user says 'learn this', 'remember', '记住', '学习这个'. Keywords: learn, patterns, skills, preferences, 记住, 学习"
+description: "Extract reusable patterns and preferences from current session and save as skill files. Use when: (1) user runs /learn, (2) user says 'learn this', 'remember', '记住这个', '学习这个', '记住', '学习'. Keywords: learn, patterns, skills, preferences, extract, 记住, 学习"
 ---
 
-# Continuous Learning
+# Learn — Extract & Save Reusable Patterns
 
-Auto-extract reusable patterns from sessions. **Learn once, reuse forever.**
+Scan current session for reusable knowledge, review with user, save as skill files.
 
-## Two-Phase Workflow
+## Workflow
 
-### Phase 1: Auto-Capture (Stop Hook)
+1. Scan current conversation for extractable patterns
+2. Present each candidate via AskUserQuestion
+3. Save confirmed patterns as skill files
+4. Report summary
 
-Session ends → evaluate → stage to pending:
+## What to Extract
 
-```text
-[Session ends, 15+ messages]
-[ContinuousLearning] Detected: prisma-connection-pool-fix
-[ContinuousLearning] Staged to pending (run /learn to review)
+| Type | Signal |
+|------|--------|
+| Error resolution | Error + root cause + fix |
+| Debugging technique | Non-obvious debug steps |
+| Workaround | Library quirks, API limitations |
+| Project convention | Codebase-specific patterns |
+| User preference | Corrections: 不要/别/必须/always/never/don't |
+| Dead end | Approach tried → failed → why it doesn't work |
+| Blocker | Limitation discovered: API/tool/library can't do X |
+| Anti-pattern | Method that seems right but causes subtle issues |
+| Agent introspection | Agent failed → why? Prompt gap / tool limitation / knowledge blind spot |
+
+**Skip**: Simple typos, one-time fixes, obvious patterns, anything non-reusable.
+
+### Agent Introspection
+
+When the agent makes a mistake or fails at a task, go deeper than "what failed":
+
+- **What went wrong?** — The observable failure
+- **Why?** — Root cause: was it a prompt issue, tool limitation, missing context, or knowledge gap?
+- **What to update?** — CLAUDE.md rule, skill instruction, or tool configuration to prevent recurrence
+
+## Quality Gate
+
+Extract only if **all four** hold: non-trivial, reusable across sessions, specific (clear problem + solution), actionable.
+
+## Review UX
+
+For each extracted pattern:
+
+```yaml
+question: "Pattern: {name}\n{summary}\n\nSave?"
+options:
+  - label: "Save to project (Recommended)"
+    description: "Write to .claude/skills/learned/ (current project only)"
+  - label: "Save globally"
+    description: "Write to ~/.claude/skills/learned/ (all projects)"
+  - label: "Skip"
+    description: "Discard"
+  - label: "Edit then save"
+    description: "Modify before saving"
 ```
 
-### Phase 2: Review (`/learn`)
+## Save Locations
 
-1. Read `~/.claude/pending-skills.md`
-2. For each skill, AskUserQuestion:
-   - "存入项目 (推荐)" → `.claude/skills/learned/`
-   - "存入全局" → `~/.claude/skills/learned/`
-   - "跳过" / "编辑后保存"
-3. Write confirmed, clear pending
-
-## Pattern Detection
-
-**Detect**:
-- `error_resolution` - Error + root cause + fix
-- `debugging_techniques` - Non-obvious debug steps
-- `workarounds` - Library quirks, API limitations
-- `project_specific` - Codebase conventions
-- `user_preference` - Corrections (不要、别、必须、always、never、don't)
-
-**Ignore**: Simple typos, one-time fixes, trivial patterns.
-
-## Quality Filter
-
-Only extract patterns that are:
-- **Non-trivial**: Not obvious
-- **Reusable**: Helps future sessions
-- **Specific**: Clear problem + solution
-- **Actionable**: Can apply directly
-
-## File Locations
-
-```text
-.claude/skills/learned/     # Project (higher priority)
-~/.claude/skills/learned/   # Global
-~/.claude/pending-skills.md # Staging
+```
+{project}/.claude/skills/learned/   # Project-level (higher priority)
+~/.claude/skills/learned/           # Global
 ```
 
-## References
+Project skills override global skills with the same name.
 
-- [Setup Guide](references/setup.md) - Hook configuration
-- [Output Format](references/format.md) - Skill file format
+## Output Format
 
-## Related
+See [references/format.md](references/format.md) for the saved skill file structure.
 
-- `/learn` command - Review pending skills
+## Agent-Agnostic Usage
+
+This skill works with any AI coding agent:
+
+- **Claude Code**: `/learn`
+- **Codex CLI / others**: Point the agent to this file and say "follow the workflow above"

@@ -45,30 +45,39 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 
 ## Commands
 
-Commands 是用户入口，调用对应的 agents。
+本仓库的斜杠入口包含 command 文件和 skill 两类。
 
 | 命令 | Agent | 用途 |
 |------|-------|------|
 | `/plan` | planner | 实现规划 |
 | `/architect` | architect | 系统设计、ADR |
-| `/tdd` | tdd-guide | 测试驱动开发 |
-| `/cr` | code-reviewer | Codex 代码审查 |
-| `/investigate` | codebase-investigator | 代码库分析 |
+| `/tdd` | - | 测试驱动开发（tdd skill） |
+| `/cr` | - | 跨模型代码审查（cr skill） |
+| `/code-invs` | codebase-investigator | 代码库分析 |
 | `/refactor-clean` | refactor-cleaner | 死代码清理 (Python/Go/JS/TS) |
 | `/update-codemaps` | codemap-updater | 生成架构文档 |
 | `/e2e` | e2e-browser | 通过 Claude in Chrome 进行浏览器 E2E 测试 |
+| `/eval` | - | 评估驱动开发：定义、检查、报告 |
+| `/learn` | - | 从当前会话提取模式（continuous-learning skill） |
 
 ### 安装
 
 ```bash
 ln -sf $(pwd)/commands/plan.md ~/.claude/commands/plan.md
 ln -sf $(pwd)/commands/architect.md ~/.claude/commands/architect.md
-ln -sf $(pwd)/commands/tdd.md ~/.claude/commands/tdd.md
-ln -sf $(pwd)/commands/cr.md ~/.claude/commands/cr.md
-ln -sf $(pwd)/commands/investigate.md ~/.claude/commands/investigate.md
+ln -sf $(pwd)/commands/code-invs.md ~/.claude/commands/code-invs.md
 ln -sf $(pwd)/commands/refactor-clean.md ~/.claude/commands/refactor-clean.md
 ln -sf $(pwd)/commands/update-codemaps.md ~/.claude/commands/update-codemaps.md
 ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
+```
+
+### Skill 安装（示例）
+
+```bash
+ln -sf $(pwd)/skills/cr ~/.claude/skills/cr
+ln -sf $(pwd)/skills/peer-review ~/.claude/skills/peer-review
+ln -sf $(pwd)/skills/continuous-learning ~/.claude/skills/continuous-learning
+ln -sf $(pwd)/skills/tdd ~/.claude/skills/tdd
 ```
 
 ## Skills
@@ -86,6 +95,20 @@ ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
 
 详见 [skills/reflect/SKILL.md](skills/reflect/SKILL.md)
 
+### continuous-learning
+
+从当前会话提取可复用的技术模式，并进行交互式确认。
+
+**用法（`/learn`）**：
+```bash
+/learn              # 扫描当前会话并审核提取结果
+/learn --dry-run    # 预览不保存
+```
+
+**输出**：技能保存到 `~/.claude/skills/learned/`
+
+详见 [skills/continuous-learning/SKILL.md](skills/continuous-learning/SKILL.md)
+
 ## Agents
 
 ### code-reviewer
@@ -97,10 +120,11 @@ ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
 - 直接调用：`Task(subagent_type: "code-reviewer")`
 
 **工作流程**（在独立子进程中执行）：
-1. 收集 git diff
-2. 格式化 review 请求写入临时文件
-3. 调用 `codex exec` 发送给 Codex
-4. 返回 P1/P2/P3 结构化反馈
+1. 检查工作区与 CHANGELOG 状态（默认不自动改写）
+2. 检查未跟踪文件并在暂存前征求确认
+3. 运行非修改型 lint 检查
+4. 按难度调用 `codex review`
+5. 返回 P1/P2/P3 结构化反馈
 
 **优势**：不占用主窗口上下文，中间过程在后台完成。
 
@@ -141,18 +165,6 @@ ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
 **输出**：架构决策记录（ADR）、设计提案、权衡分析。
 
 详见 [agents/architect/agent.md](agents/architect/agent.md)
-
-### tdd-guide
-
-强制测试先行的 TDD 专家。
-
-**触发方式**：
-- 关键词触发：`TDD`, `test first`, `write tests`, `test coverage`
-- 直接调用：`Task(subagent_type: "tdd-guide")`
-
-**能力**：可以编写代码（有 Write, Edit, Bash 工具）。强制 Red-Green-Refactor 循环，确保 80%+ 覆盖率。
-
-详见 [agents/tdd-guide/agent.md](agents/tdd-guide/agent.md)
 
 ### refactor-cleaner
 
@@ -230,14 +242,20 @@ claude-skills/
 ├── commands/
 │   ├── plan.md
 │   ├── architect.md
-│   ├── tdd.md
-│   ├── cr.md
-│   ├── investigate.md
+│   ├── code-invs.md
 │   ├── refactor-clean.md
 │   ├── update-codemaps.md
 │   └── e2e.md
 ├── skills/
-│   └── reflect/
+│   ├── continuous-learning/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   ├── cr/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   ├── peer-review/
+│   │   └── SKILL.md
+│   └── tdd/
 │       └── SKILL.md
 ├── agents/
 │   ├── architect/
@@ -247,8 +265,6 @@ claude-skills/
 │   ├── codebase-investigator/
 │   │   └── agent.md
 │   ├── planner/
-│   │   └── agent.md
-│   ├── tdd-guide/
 │   │   └── agent.md
 │   ├── refactor-cleaner/
 │   │   └── agent.md

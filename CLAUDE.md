@@ -49,28 +49,30 @@ ln -sf $(pwd)/agents/{name}/agent.md ~/.claude/agents/{name}.md
 
 ## Current Extensions
 
-### Commands
+### Commands (agent invokers)
 - `/plan` - Implementation planning, invokes planner agent
 - `/architect` - System design and ADRs, invokes architect agent
-- `/tdd` - Test-driven development, invokes tdd-guide agent
-- `/cr` - Code review via Codex, invokes code-reviewer agent
 - `/code-invs` - Codebase analysis, invokes codebase-investigator agent
 - `/refactor-clean` - Dead code cleanup (Python/Go/JS/TS), invokes refactor-cleaner agent
 - `/update-codemaps` - Generate architecture documentation, invokes codemap-updater agent
 - `/e2e` - Browser E2E testing via Claude in Chrome, invokes e2e-browser agent
-- `/eval` - Eval-Driven Development: define, check, report evals
-- `/learn` - Review pending skills extracted by continuous-learning
 
-### Skills
-- `eval-harness` - EDD framework: capability/regression evals, pass@k metrics, code/model/human graders.
-- `continuous-learning` - Auto-extract patterns and preferences from sessions. Two-phase: Stop hook captures → `/learn` reviews. Supports project/global storage.
+### Skills (cross-tool workflows)
+- `cr` - Cross-model code review. Claude Code → Codex reviews, Codex CLI → Claude reviews.
+- `peer-review` - Cross-model proposal/viewpoint review. Inbound (verify findings) + outbound (challenge plans).
+- `eval` - Eval-Driven Development: define, check, report evals with pass@k metrics.
+- `eval-harness` - EDD framework: capability/regression evals, code/model/human graders.
+- `continuous-learning` - Active pattern extraction via `/learn`. Save to project/global storage.
+- `tdd` - Test-driven development: Red-Green-Refactor, coverage targets.
+- `skill-link` - Install skills/commands/agents via symlinks to Claude Code + Codex CLI.
+- `drawio` - AI-powered draw.io diagram generation with MCP server.
+- `research` - Web research via Tavily API with citations.
 
 ### Agents
 - `code-reviewer` - Send diffs to OpenAI Codex, returns P1/P2/P3 feedback
 - `codebase-investigator` - Read-only analysis, outputs to `notes/` directory
 - `planner` - Implementation planning for complex features and refactoring
 - `architect` - System design, scalability analysis, and architectural decisions
-- `tdd-guide` - Test-Driven Development, enforces tests-first, 80%+ coverage
 - `refactor-cleaner` - Dead code cleanup for Python, Go, JS/TS
 - `codemap-updater` - Generate architecture documentation from codebase
 - `e2e-browser` - Browser E2E testing using Claude in Chrome MCP

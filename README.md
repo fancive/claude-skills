@@ -47,30 +47,39 @@ ln -sf $(pwd)/agents/code-reviewer/agent.md ~/.claude/agents/code-reviewer.md
 
 ## Commands
 
-Commands are user-facing entry points that invoke agents.
+Slash entry points in this repo include both command files and skills.
 
 | Command | Agent | Purpose |
 |---------|-------|---------|
 | `/plan` | planner | Implementation planning |
 | `/architect` | architect | System design, ADRs |
-| `/tdd` | tdd-guide | Test-driven development |
-| `/cr` | code-reviewer | Code review via Codex |
-| `/investigate` | codebase-investigator | Codebase analysis |
+| `/tdd` | - | Test-driven development (tdd skill) |
+| `/cr` | - | Cross-model code review (cr skill) |
+| `/code-invs` | codebase-investigator | Codebase analysis |
 | `/refactor-clean` | refactor-cleaner | Dead code cleanup (Python/Go/JS/TS) |
 | `/update-codemaps` | codemap-updater | Generate architecture documentation |
 | `/e2e` | e2e-browser | Browser E2E testing via Claude in Chrome |
+| `/eval` | - | Eval-Driven Development: define, check, report |
+| `/learn` | - | Extract patterns from current session (continuous-learning skill) |
 
 ### Installation
 
 ```bash
 ln -sf $(pwd)/commands/plan.md ~/.claude/commands/plan.md
 ln -sf $(pwd)/commands/architect.md ~/.claude/commands/architect.md
-ln -sf $(pwd)/commands/tdd.md ~/.claude/commands/tdd.md
-ln -sf $(pwd)/commands/cr.md ~/.claude/commands/cr.md
-ln -sf $(pwd)/commands/investigate.md ~/.claude/commands/investigate.md
+ln -sf $(pwd)/commands/code-invs.md ~/.claude/commands/code-invs.md
 ln -sf $(pwd)/commands/refactor-clean.md ~/.claude/commands/refactor-clean.md
 ln -sf $(pwd)/commands/update-codemaps.md ~/.claude/commands/update-codemaps.md
 ln -sf $(pwd)/commands/e2e.md ~/.claude/commands/e2e.md
+```
+
+### Skill Installation (examples)
+
+```bash
+ln -sf $(pwd)/skills/cr ~/.claude/skills/cr
+ln -sf $(pwd)/skills/peer-review ~/.claude/skills/peer-review
+ln -sf $(pwd)/skills/continuous-learning ~/.claude/skills/continuous-learning
+ln -sf $(pwd)/skills/tdd ~/.claude/skills/tdd
 ```
 
 ## Skills
@@ -88,6 +97,20 @@ Extract reusable engineering rules from conversations. "Correct once, never agai
 
 See [skills/reflect/SKILL.md](skills/reflect/SKILL.md)
 
+### continuous-learning
+
+Extract reusable technical patterns from the current session with interactive confirmation.
+
+**Usage (`/learn`)**:
+```bash
+/learn              # Scan current session and review extracted patterns
+/learn --dry-run    # Preview without saving
+```
+
+**Output**: Skills saved to `~/.claude/skills/learned/`
+
+See [skills/continuous-learning/SKILL.md](skills/continuous-learning/SKILL.md)
+
 ## Agents
 
 ### code-reviewer
@@ -99,10 +122,11 @@ Send code changes to OpenAI Codex for review, returns P1/P2/P3 prioritized feedb
 - Direct call: `Task(subagent_type: "code-reviewer")`
 
 **Workflow** (runs in isolated subprocess):
-1. Collect git diff
-2. Format review request to temp file
-3. Call `codex exec` to send to Codex
-4. Return P1/P2/P3 structured feedback
+1. Inspect workspace + CHANGELOG status (no auto-edit by default)
+2. Check untracked files and ask before staging
+3. Run non-mutating lint checks
+4. Call `codex review` with difficulty-based config
+5. Return P1/P2/P3 structured feedback
 
 **Advantage**: Doesn't consume main window context, intermediate steps run in background.
 
@@ -143,18 +167,6 @@ Software architecture specialist for system design and technical decision-making
 **Output**: Architecture Decision Records (ADRs), design proposals, trade-off analysis.
 
 See [agents/architect/agent.md](agents/architect/agent.md)
-
-### tdd-guide
-
-Test-Driven Development specialist enforcing write-tests-first methodology.
-
-**Triggers**:
-- Keywords: `TDD`, `test first`, `write tests`, `test coverage`
-- Direct call: `Task(subagent_type: "tdd-guide")`
-
-**Capabilities**: Can write code (has Write, Edit, Bash tools). Enforces Red-Green-Refactor cycle, ensures 80%+ coverage.
-
-See [agents/tdd-guide/agent.md](agents/tdd-guide/agent.md)
 
 ### refactor-cleaner
 
@@ -232,14 +244,20 @@ claude-skills/
 ├── commands/
 │   ├── plan.md
 │   ├── architect.md
-│   ├── tdd.md
-│   ├── cr.md
-│   ├── investigate.md
+│   ├── code-invs.md
 │   ├── refactor-clean.md
 │   ├── update-codemaps.md
 │   └── e2e.md
 ├── skills/
-│   └── reflect/
+│   ├── continuous-learning/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   ├── cr/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   ├── peer-review/
+│   │   └── SKILL.md
+│   └── tdd/
 │       └── SKILL.md
 ├── agents/
 │   ├── architect/
@@ -249,8 +267,6 @@ claude-skills/
 │   ├── codebase-investigator/
 │   │   └── agent.md
 │   ├── planner/
-│   │   └── agent.md
-│   ├── tdd-guide/
 │   │   └── agent.md
 │   ├── refactor-cleaner/
 │   │   └── agent.md
