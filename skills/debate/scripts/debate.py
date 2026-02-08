@@ -153,21 +153,41 @@ def collect_code_artifact(
     kind, value = parse_scope(scope)
     artifact_kind = "diff"
     if kind == "uncommitted":
-        diff = run_cmd(["git", "diff"], cwd=git_root).stdout
-        stat = run_cmd(["git", "diff", "--stat"], cwd=git_root).stdout
+        diff_res = run_cmd(["git", "diff"], cwd=git_root)
+        stat_res = run_cmd(["git", "diff", "--stat"], cwd=git_root)
+        if diff_res.code != 0:
+            raise RuntimeError(f"git diff failed: {diff_res.stderr or diff_res.stdout}")
+        diff = diff_res.stdout
+        stat = stat_res.stdout
     elif kind == "commit" and value:
-        diff = run_cmd(["git", "show", "--patch", value], cwd=git_root).stdout
-        stat = run_cmd(["git", "show", "--stat", "--oneline", value], cwd=git_root).stdout
+        diff_res = run_cmd(["git", "show", "--patch", value], cwd=git_root)
+        stat_res = run_cmd(["git", "show", "--stat", "--oneline", value], cwd=git_root)
+        if diff_res.code != 0:
+            raise RuntimeError(f"git show commit {value} failed: {diff_res.stderr or diff_res.stdout}")
+        diff = diff_res.stdout
+        stat = stat_res.stdout
     elif kind == "base" and value:
         expr = f"{value}...HEAD"
-        diff = run_cmd(["git", "diff", expr], cwd=git_root).stdout
-        stat = run_cmd(["git", "diff", "--stat", expr], cwd=git_root).stdout
+        diff_res = run_cmd(["git", "diff", expr], cwd=git_root)
+        stat_res = run_cmd(["git", "diff", "--stat", expr], cwd=git_root)
+        if diff_res.code != 0:
+            raise RuntimeError(f"git diff base {value} failed: {diff_res.stderr or diff_res.stdout}")
+        diff = diff_res.stdout
+        stat = stat_res.stdout
     elif kind == "range" and value:
-        diff = run_cmd(["git", "diff", value], cwd=git_root).stdout
-        stat = run_cmd(["git", "diff", "--stat", value], cwd=git_root).stdout
+        diff_res = run_cmd(["git", "diff", value], cwd=git_root)
+        stat_res = run_cmd(["git", "diff", "--stat", value], cwd=git_root)
+        if diff_res.code != 0:
+            raise RuntimeError(f"git diff range {value} failed: {diff_res.stderr or diff_res.stdout}")
+        diff = diff_res.stdout
+        stat = stat_res.stdout
     elif kind == "file" and value:
-        diff = run_cmd(["git", "diff", "--", value], cwd=git_root).stdout
-        stat = run_cmd(["git", "diff", "--stat", "--", value], cwd=git_root).stdout
+        diff_res = run_cmd(["git", "diff", "--", value], cwd=git_root)
+        stat_res = run_cmd(["git", "diff", "--stat", "--", value], cwd=git_root)
+        if diff_res.code != 0:
+            raise RuntimeError(f"git diff file {value} failed: {diff_res.stderr or diff_res.stdout}")
+        diff = diff_res.stdout
+        stat = stat_res.stdout
         if not diff.strip():
             p = (git_root / value).resolve()
             if p.exists():
@@ -651,11 +671,15 @@ def main() -> int:
                     )
             else:
                 log_event(f"debate: round={round_no} call_backend backend={backend} target={target}")
+                # When artifact is explicit text/snippet, use scope="snippet" for code reviews
+                scope_to_use = args.scope
+                if target == "code" and artifact_kind in ("text", "snippet"):
+                    scope_to_use = "snippet"
                 critique = call_backend_review(
                     backend,
                     target=target,
                     artifact_file=round_input,
-                    scope=args.scope,
+                    scope=scope_to_use,
                     git_root=git_root,
                     timeout=args.backend_timeout_seconds,
                 )
