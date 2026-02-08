@@ -34,6 +34,7 @@ python3 skills/debate/scripts/debate.py
 python3 skills/debate/scripts/debate.py --target code --scope uncommitted --max-rounds 3 --mode manual
 python3 skills/debate/scripts/debate.py --target proposal --artifact-file /tmp/proposal.md --mode auto
 python3 skills/debate/scripts/debate.py --target proposal --state-dir /tmp/debate-state --mode auto
+python3 skills/debate/scripts/debate.py --target proposal --mode auto --skip-materialize-opposite
 ```
 
 ## Parameters
@@ -45,7 +46,8 @@ python3 skills/debate/scripts/debate.py --target proposal --state-dir /tmp/debat
 - `--max-rounds`: `1..5` (default `3`)
 - `--mode`: `auto|manual` (default `auto`)
 - `--budget-minutes`: default `20`
-- `--backend-timeout-seconds`: timeout per backend model call (default `600`)
+- `--backend-timeout-seconds`: timeout per backend model call (default `600`, recommend `>=120` for proposal/mixed)
+- `--skip-materialize-opposite`: skip the second model call when choosing `B` (faster, but final artifact is not auto-rewritten)
 - `--state-dir`: override session storage root
 
 ## Phase 1 - Resolve Artifact (auto by default)

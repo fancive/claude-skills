@@ -45,6 +45,7 @@ class ParsedCritique:
     p3: List[str]
     missing: List[str]
     recommendation: Optional[str]
+    backend_error: bool
 
 
 def run_cmd(
@@ -340,7 +341,11 @@ def call_backend_review(
             "## Missing Alternatives\n## Recommended Decision\n"
             "Include concrete evidence."
         )
-        res = run_cmd(["codex", "exec", prompt], cwd=git_root, timeout=timeout)
+        cmd = ["codex", "exec"]
+        if git_root is None:
+            cmd.append("--skip-git-repo-check")
+        cmd.append(prompt)
+        res = run_cmd(cmd, cwd=git_root, timeout=timeout)
         if res.code != 0:
             raise RuntimeError(f"codex failed: {res.stderr or res.stdout}")
         return res.stdout
@@ -368,6 +373,7 @@ def parse_critique(text: str) -> ParsedCritique:
     p3: List[str] = []
     missing: List[str] = []
     recommendation = None
+    backend_error = bool(re.search(r"(?im)^#{1,6}\s*Backend Error\b", text))
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -404,10 +410,19 @@ def parse_critique(text: str) -> ParsedCritique:
         elif section == "recommendation" and not recommendation:
             recommendation = line
 
-    return ParsedCritique(p1=p1, p2=p2, p3=p3, missing=missing, recommendation=recommendation)
+    return ParsedCritique(
+        p1=p1,
+        p2=p2,
+        p3=p3,
+        missing=missing,
+        recommendation=recommendation,
+        backend_error=backend_error,
+    )
 
 
 def judge_recommendation(parsed: ParsedCritique) -> Tuple[str, str]:
+    if parsed.backend_error and not (parsed.p1 or parsed.p2 or parsed.p3 or parsed.missing):
+        return "E", "Backend review failed; no structured critique was produced."
     p1c, p2c, p3c = len(parsed.p1), len(parsed.p2), len(parsed.p3)
     if p1c > 0:
         return "B", f"Detected {p1c} P1 issue(s); accepting opposite recommendation is safer."
@@ -462,7 +477,11 @@ def generate_compromise(
     )
     try:
         if local_backend == "codex":
-            res = run_cmd(["codex", "exec", prompt], cwd=cwd, timeout=timeout_seconds)
+            cmd = ["codex", "exec"]
+            if cwd is None:
+                cmd.append("--skip-git-repo-check")
+            cmd.append(prompt)
+            res = run_cmd(cmd, cwd=cwd, timeout=timeout_seconds)
         else:
             res = run_cmd(["claude", "-p", prompt], cwd=cwd, timeout=timeout_seconds)
         if res.code == 0 and res.stdout.strip():
@@ -493,7 +512,11 @@ def accept_opposite_revision(
     )
     try:
         if local_backend == "codex":
-            res = run_cmd(["codex", "exec", prompt], cwd=cwd, timeout=timeout_seconds)
+            cmd = ["codex", "exec"]
+            if cwd is None:
+                cmd.append("--skip-git-repo-check")
+            cmd.append(prompt)
+            res = run_cmd(cmd, cwd=cwd, timeout=timeout_seconds)
         else:
             res = run_cmd(["claude", "-p", prompt], cwd=cwd, timeout=timeout_seconds)
         if res.code == 0 and res.stdout.strip():
@@ -521,6 +544,14 @@ def main() -> int:
         type=int,
         default=600,
         help="Timeout per backend model call in seconds.",
+    )
+    parser.add_argument(
+        "--skip-materialize-opposite",
+        action="store_true",
+        help=(
+            "When choice=B in auto/manual mode, skip the second model call that materializes "
+            "the opposite recommendation into revised artifact content."
+        ),
     )
     parser.add_argument(
         "--state-dir",
@@ -566,6 +597,11 @@ def main() -> int:
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if target in ("proposal", "mixed") and args.backend_timeout_seconds < 120:
+        log_event(
+            "debate: warning backend-timeout-seconds is low for proposal/mixed reviews; "
+            "recommend >=120 (default 600)."
+        )
 
     artifact_file = session_dir / "artifact.md"
     artifact_file.write_text(artifact_text, encoding="utf-8")
@@ -746,9 +782,14 @@ def main() -> int:
         print(f"P1={len(parsed.p1)} P2={len(parsed.p2)} P3={len(parsed.p3)} Missing={len(parsed.missing)}")
 
         auto_stop_reason: Optional[str] = None
-        if round_no > 1 and not has_material and not previous_has_material:
+        if (
+            round_no > 1
+            and not parsed.backend_error
+            and not has_material
+            and not previous_has_material
+        ):
             auto_stop_reason = "Converged (two consecutive rounds with no new P1/P2)"
-        elif has_agreement_signal and not has_material:
+        elif has_agreement_signal and not has_material and not parsed.backend_error:
             auto_stop_reason = "Converged (agreement signal from opposite model)"
 
         if auto_stop_reason:
@@ -757,6 +798,7 @@ def main() -> int:
                 "choice": "AUTO_STOP",
                 "judge_recommendation": rec_choice,
                 "judge_reason": rec_reason,
+                "backend_error": parsed.backend_error,
                 "p1": parsed.p1,
                 "p2": parsed.p2,
                 "p3": parsed.p3,
@@ -782,6 +824,7 @@ def main() -> int:
             "target": effective_target,
             "backend_used": backend_used,
             "backend_unavailable": backend_unavailable,
+            "backend_error": parsed.backend_error,
             "p1": parsed.p1,
             "p2": parsed.p2,
             "p3": parsed.p3,
@@ -795,16 +838,21 @@ def main() -> int:
             final_artifact = current_artifact
             break
         if choice == "B":
-            final_decision = "Accept Opposite"
-            local_backend = "codex" if env_name == "codex" else "claude"
-            log_event(f"debate: round={round_no} materialize_opposite backend={local_backend}")
-            final_artifact = accept_opposite_revision(
-                local_backend,
-                current_artifact,
-                critique,
-                git_root,
-                timeout_seconds=args.backend_timeout_seconds,
-            )
+            if args.skip_materialize_opposite:
+                log_event("debate: skip materialize_opposite due to --skip-materialize-opposite")
+                final_decision = "Accept Opposite (materialization skipped)"
+                final_artifact = current_artifact
+            else:
+                final_decision = "Accept Opposite"
+                local_backend = "codex" if env_name == "codex" else "claude"
+                log_event(f"debate: round={round_no} materialize_opposite backend={local_backend}")
+                final_artifact = accept_opposite_revision(
+                    local_backend,
+                    current_artifact,
+                    critique,
+                    git_root,
+                    timeout_seconds=args.backend_timeout_seconds,
+                )
             break
         if choice == "C":
             previous_has_material = has_material
@@ -829,7 +877,10 @@ def main() -> int:
             current_artifact = f"{current_artifact}\n\n## Rebuttal\n{rebuttal}\n"
             continue
         if choice == "E":
-            final_decision = "Stopped by user"
+            if parsed.backend_error and args.mode == "auto":
+                final_decision = "Stopped (backend error - no review performed)"
+            else:
+                final_decision = "Stopped by user"
             final_artifact = current_artifact
             break
 
