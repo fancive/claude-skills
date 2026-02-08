@@ -31,6 +31,7 @@ Script-first execution (recommended for repeatability):
 
 ```bash
 python3 skills/debate/scripts/debate.py
+python3 skills/debate/scripts/debate.py --intensity quick --target proposal --mode auto
 python3 skills/debate/scripts/debate.py --target code --scope uncommitted --max-rounds 3 --mode manual
 python3 skills/debate/scripts/debate.py --target proposal --artifact-file /tmp/proposal.md --mode auto
 python3 skills/debate/scripts/debate.py --target proposal --state-dir /tmp/debate-state --mode auto
@@ -43,10 +44,14 @@ python3 skills/debate/scripts/debate.py --target proposal --mode auto --skip-mat
 - `--scope` (code only):
   - git workspace: `uncommitted|commit:<sha>|base:<branch>|range:<a>..<b>|file:<path>`
   - non-git workspace: `file:<path>` or explicit snippet content
-- `--max-rounds`: `1..5` (default `3`)
+- `--intensity`: `quick|standard|extensive` (default `standard`)
+  - `quick`: `max_rounds=1`, `budget=10m`, `backend_timeout=180s`
+  - `standard`: `max_rounds=3`, `budget=20m`, `backend_timeout=600s`
+  - `extensive`: `max_rounds=5`, `budget=40m`, `backend_timeout=900s`
+- `--max-rounds`: `1..5` (defaults from `--intensity`; explicit value overrides profile)
 - `--mode`: `auto|manual` (default `auto`)
-- `--budget-minutes`: default `20`
-- `--backend-timeout-seconds`: timeout per backend model call (default `600`, recommend `>=120` for proposal/mixed)
+- `--budget-minutes`: defaults from `--intensity`; explicit value overrides profile
+- `--backend-timeout-seconds`: defaults from `--intensity`; recommend `>=120` for proposal/mixed
 - `--skip-materialize-opposite`: skip the second model call when choosing `B` (faster, but final artifact is not auto-rewritten)
 - `--state-dir`: override session storage root
 
@@ -91,8 +96,13 @@ Persist:
 
 - `artifact.md` - debated content
 - `metadata.json` - target type, scope, rounds, timestamp
+- `decision.json` - machine-readable final decision and judge history
 - `round-<n>-input.md` / `round-<n>-critique.md`
 - `summary.md`
+
+Security note:
+- `decision.json`/`metadata.json` may include local paths, backend error strings, and judge rationale.
+- Keep these files out of version control unless you explicitly need audit artifacts.
 
 Do not stage these files.
 

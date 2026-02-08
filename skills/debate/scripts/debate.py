@@ -26,9 +26,57 @@ from typing import Dict, List, Optional, Tuple
 
 DEFAULT_MAX_ROUNDS = 3
 DEFAULT_BUDGET_MINUTES = 20
+DEFAULT_BACKEND_TIMEOUT_SECONDS = 600
 PROPOSAL_SECTION_PATTERN = (
     r"(?im)^\s{0,3}(#+\s*(design|proposal|approach|decision|tradeoff|rebuttal|response)\b)"
 )
+INTENSITY_PROFILES = {
+    "quick": {
+        "max_rounds": 1,
+        "budget_minutes": 10,
+        "backend_timeout_seconds": 180,
+    },
+    "standard": {
+        "max_rounds": DEFAULT_MAX_ROUNDS,
+        "budget_minutes": DEFAULT_BUDGET_MINUTES,
+        "backend_timeout_seconds": DEFAULT_BACKEND_TIMEOUT_SECONDS,
+    },
+    "extensive": {
+        "max_rounds": 5,
+        "budget_minutes": 40,
+        "backend_timeout_seconds": 900,
+    },
+}
+REQUIRED_INTENSITY_KEYS = (
+    "max_rounds",
+    "budget_minutes",
+    "backend_timeout_seconds",
+)
+
+
+def validate_intensity_profiles() -> None:
+    for name, profile in INTENSITY_PROFILES.items():
+        missing = [key for key in REQUIRED_INTENSITY_KEYS if key not in profile]
+        if missing:
+            raise ValueError(f"invalid intensity profile '{name}': missing keys {missing}")
+
+        max_rounds = profile["max_rounds"]
+        budget_minutes = profile["budget_minutes"]
+        backend_timeout_seconds = profile["backend_timeout_seconds"]
+
+        if not isinstance(max_rounds, int) or not (1 <= max_rounds <= 5):
+            raise ValueError(
+                f"invalid intensity profile '{name}': max_rounds must be int in [1, 5], got {max_rounds!r}"
+            )
+        if not isinstance(budget_minutes, int) or budget_minutes <= 0:
+            raise ValueError(
+                f"invalid intensity profile '{name}': budget_minutes must be positive int, got {budget_minutes!r}"
+            )
+        if not isinstance(backend_timeout_seconds, int) or backend_timeout_seconds <= 0:
+            raise ValueError(
+                "invalid intensity profile "
+                f"'{name}': backend_timeout_seconds must be positive int, got {backend_timeout_seconds!r}"
+            )
 
 
 @dataclasses.dataclass
@@ -125,6 +173,19 @@ def make_session_dir(session_base_dir: Path) -> Tuple[str, Path]:
     session_dir = session_base_dir / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_id, session_dir
+
+
+def is_tmp_path(path: Path) -> bool:
+    resolved = path.resolve()
+    tmp_roots = (Path("/tmp"), Path("/private/tmp"))
+    for root in tmp_roots:
+        try:
+            root_resolved = root.resolve()
+        except FileNotFoundError:
+            continue
+        if resolved == root_resolved or root_resolved in resolved.parents:
+            return True
+    return False
 
 
 def classify_text_target(text: str) -> str:
@@ -366,6 +427,11 @@ def call_backend_review(
     raise RuntimeError(f"Unknown backend: {backend}")
 
 
+def is_no_issue_marker(item: str) -> bool:
+    normalized = re.sub(r"[*_`]+", "", item).strip().lower()
+    return normalized in {"none", "none.", "no issues"} or normalized.startswith("none identified")
+
+
 def parse_critique(text: str) -> ParsedCritique:
     section = None
     p1: List[str] = []
@@ -397,6 +463,8 @@ def parse_critique(text: str) -> ParsedCritique:
 
         if line.startswith(("-", "*")):
             item = line[1:].strip()
+            if section in {"p1", "p2", "p3"} and is_no_issue_marker(item):
+                continue
             if section == "p1":
                 p1.append(item)
             elif section == "p2":
@@ -407,6 +475,8 @@ def parse_critique(text: str) -> ParsedCritique:
                 missing.append(item)
             elif section == "recommendation" and not recommendation:
                 recommendation = item
+        elif section in {"p1", "p2", "p3"} and is_no_issue_marker(line):
+            continue
         elif section == "recommendation" and not recommendation:
             recommendation = line
 
@@ -530,20 +600,68 @@ def write_json(path: Path, data: Dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def explicit_intensity_overrides(args: argparse.Namespace) -> List[str]:
+    mapping = {
+        "max_rounds": "--max-rounds",
+        "budget_minutes": "--budget-minutes",
+        "backend_timeout_seconds": "--backend-timeout-seconds",
+    }
+    return [flag for attr, flag in mapping.items() if getattr(args, attr) is not None]
+
+
+def apply_intensity_defaults(args: argparse.Namespace) -> None:
+    profile = INTENSITY_PROFILES.get(args.intensity)
+    if profile is None:
+        allowed = ", ".join(sorted(INTENSITY_PROFILES))
+        raise ValueError(f"invalid --intensity '{args.intensity}'. Allowed: {allowed}")
+
+    if args.max_rounds is None:
+        args.max_rounds = profile["max_rounds"]
+    if args.budget_minutes is None:
+        args.budget_minutes = profile["budget_minutes"]
+    if args.backend_timeout_seconds is None:
+        args.backend_timeout_seconds = profile["backend_timeout_seconds"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Cross-model debate orchestrator MVP")
     parser.add_argument("content", nargs="?", help="Explicit artifact content")
     parser.add_argument("--artifact-file", help="Read artifact content from file")
     parser.add_argument("--target", choices=["auto", "code", "proposal", "mixed"], default="auto")
     parser.add_argument("--scope", default="uncommitted")
-    parser.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS)
+    parser.add_argument(
+        "--intensity",
+        choices=["quick", "standard", "extensive"],
+        default="standard",
+        help=(
+            "Select intensity preset. "
+            "Defaults: quick=(rounds=1,budget=10,timeout=180), "
+            "standard=(rounds=3,budget=20,timeout=600), "
+            "extensive=(rounds=5,budget=40,timeout=900). "
+            "Explicit flags override only their corresponding preset value."
+        ),
+    )
+    parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=None,
+        help="Max rounds (1..5). Defaults from --intensity (standard=3).",
+    )
     parser.add_argument("--mode", choices=["auto", "manual"], default="auto")
-    parser.add_argument("--budget-minutes", type=int, default=DEFAULT_BUDGET_MINUTES)
+    parser.add_argument(
+        "--budget-minutes",
+        type=int,
+        default=None,
+        help="Overall time budget in minutes. Defaults from --intensity (standard=20).",
+    )
     parser.add_argument(
         "--backend-timeout-seconds",
         type=int,
-        default=600,
-        help="Timeout per backend model call in seconds.",
+        default=None,
+        help=(
+            "Timeout per backend model call in seconds. "
+            "Defaults from --intensity (standard=600)."
+        ),
     )
     parser.add_argument(
         "--skip-materialize-opposite",
@@ -562,6 +680,30 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    try:
+        validate_intensity_profiles()
+        overridden = explicit_intensity_overrides(args)
+        apply_intensity_defaults(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if overridden:
+        print(
+            "note: --intensity "
+            f"{args.intensity} defaults overridden by explicit flags: {', '.join(overridden)}",
+            file=sys.stderr,
+        )
+
+    if not (1 <= args.max_rounds <= 5):
+        print("error: --max-rounds must be between 1 and 5", file=sys.stderr)
+        return 2
+    if args.budget_minutes <= 0:
+        print("error: --budget-minutes must be > 0", file=sys.stderr)
+        return 2
+    if args.backend_timeout_seconds <= 0:
+        print("error: --backend-timeout-seconds must be > 0", file=sys.stderr)
+        return 2
 
     git_root = get_git_root()
     workspace_root = (git_root if git_root else Path.cwd()).resolve()
@@ -586,6 +728,11 @@ def main() -> int:
             return 2
 
     session_id, session_dir = make_session_dir(session_base_dir)
+    if backend == "claude" and is_tmp_path(session_dir):
+        log_event(
+            "debate: warning session_dir is under /tmp while backend=claude; "
+            "claude -p may be unable to read files there. Prefer --state-dir ./.debate-state."
+        )
     started_at = time.time()
     log_event(
         "debate: start "
@@ -611,8 +758,10 @@ def main() -> int:
         "started_at": dt.datetime.now().isoformat(),
         "target": target,
         "scope": args.scope,
+        "intensity": args.intensity,
         "max_rounds": args.max_rounds,
         "budget_minutes": args.budget_minutes,
+        "backend_timeout_seconds": args.backend_timeout_seconds,
         "workspace_root": str(workspace_root),
         "session_dir": str(session_dir),
         "backend": backend,
@@ -884,8 +1033,13 @@ def main() -> int:
             final_artifact = current_artifact
             break
 
+    completed_at = dt.datetime.now().isoformat()
+    total_duration_seconds = round(time.time() - started_at, 3)
+
     session_state["status"] = "closed"
     session_state["final_decision"] = final_decision
+    session_state["completed_at"] = completed_at
+    session_state["total_duration_seconds"] = total_duration_seconds
     write_json(session_dir / "metadata.json", session_state)
 
     summary = [
@@ -893,8 +1047,10 @@ def main() -> int:
         "",
         f"Session: {session_id}",
         f"Target: {target}",
+        f"Intensity: {args.intensity}",
         f"Rounds: {len(session_state['rounds'])}",
         f"Final Decision: {final_decision}",
+        f"Total Duration Seconds: {total_duration_seconds}",
         "",
         "### Next Actions",
         "1. Apply selected artifact content",
@@ -902,6 +1058,29 @@ def main() -> int:
     ]
     (session_dir / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
     (session_dir / "final-artifact.md").write_text(final_artifact, encoding="utf-8")
+    decision = {
+        "session_id": session_id,
+        "status": session_state.get("status"),
+        "target": target,
+        "scope": args.scope,
+        "intensity": args.intensity,
+        "rounds": len(session_state["rounds"]),
+        "final_decision": final_decision,
+        "completed_at": completed_at,
+        "total_duration_seconds": total_duration_seconds,
+        "final_artifact_file": str(session_dir / "final-artifact.md"),
+        "judge_recommendation_history": [
+            {
+                "round": item.get("round"),
+                "choice": item.get("choice"),
+                "judge_recommendation": item.get("judge_recommendation"),
+                "judge_reason": item.get("judge_reason"),
+                "backend_error": item.get("backend_error"),
+            }
+            for item in session_state["rounds"]
+        ],
+    }
+    write_json(session_dir / "decision.json", decision)
 
     print("\n" + "\n".join(summary))
     print(f"Saved: {session_dir}")
